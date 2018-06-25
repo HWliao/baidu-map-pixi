@@ -1,12 +1,39 @@
 (function () {
   'use strict';
   window.CustomLayerOverlay = CustomLayerOverlay;
+  // 默认配置
+  var theOptions = {
+    url: '',
+    // 获取坐标点配置集合
+    getPoints: function () {
+    }
+  };
+  // 默认坐标点配置
+  var pointOptions = {};
 
   /**
-   * 自定义覆盖物
+   * 自定义绘制覆盖物
    * @constructor
    */
-  function CustomLayerOverlay() {
+  function CustomLayerOverlay(options) {
+    // 配置
+    this._options = Object.assign({}, theOptions, options);
+    // 事件列表
+    this._events = {};
+    // 分辨率/设备像素比率 retina屏幕上为2
+    this._resolution = 1;
+    // 是否已经加载资源
+    this._isLoaded = false;
+    // 纹理贴图
+    this._resources = {};
+    // 图标容器(精灵容器)
+    this._container = null;
+    // 事件处理函数,这个比较特殊
+    var that = this;
+    this.handleEvent = function (e) {
+      var sprite = this;
+      that.dealEvent(e, sprite);
+    };
   }
 
   CustomLayerOverlay.prototype = new BMap.Overlay();
@@ -18,6 +45,8 @@
     this._app = this.createPIXIApp();
     // 百度地图原有海量点所在地图面板为mapPane
     this._map.getPanes().mapPane.appendChild(this._app.view);
+    // 加载资源(纹理贴图集)
+    this._app.loader.add(this._options.url).load(this.setup.bind(this));
     return this._app.view;
   };
 
@@ -34,30 +63,60 @@
    * 渲染
    */
   CustomLayerOverlay.prototype.render = function () {
+    // pixi app 无效
     if (!this.isAppValid()) return;
+    // 资源未加载
+    if (!this.isLoad()) return;
 
-    if (this._particleContainer) {
-      // 去除上一个粒子容器
-      this._app.stage.removeChild(this._particleContainer);
+    if (this._container) {
+      // 去除上一个精灵容器
+      this._app.stage.removeChild(this._container);
     }
-    // 添加新的粒子容器
-    var texture = PIXI.Texture.fromImage('static/images/markers.png');
-    texture.frame = new PIXI.Rectangle(0, 0, 28, 31);
 
-    this._particleContainer = new PIXI.Container();
-    for (var i = 0; i < 5000; i++) {
-      var sprite = new PIXI.Sprite(texture);
+    // 坐标点获取
+    if (!this._options.getPoints || typeof this._options.getPoints !== 'function') {
+      throw new Error('options getPoints must be function!!');
+    }
+    // 待显示坐标点
+    var points = this._options.getPoints() || [];
+    // 地图当前可视区域
+    var bounds = this._map.getBounds();
+
+    // 添加精灵容器
+    this._container = new PIXI.Container();
+    for (var i = 0; i < points.length; i++) {
+      var point = points[i];
+      // 该坐标点不在当前坐标区域内,跳过
+      if (!bounds.containsPoint(point)) continue;
+      // 地理坐标转化为像素坐标
+      var pixel = this._map.pointToPixel(point);
+
+      // 创建精灵 pixi概念 代表显示元素
+      var sprite = new PIXI.Sprite(this._resources.marker.texture);
       sprite.interactive = true;
       sprite.buttonMode = true;
-      sprite.on('click', this.dealEvent.bind(this));
-      sprite.on('mouseover', this.dealEvent.bind(this));
-      sprite.on('mouseout', this.dealEvent.bind(this));
-      sprite.x = Math.random() * this._app.screen.width;
-      sprite.y = Math.random() * this._app.screen.height;
-      sprite.tint = Math.random() * 0xE8D4CD;
-      this._particleContainer.addChild(sprite);
+      sprite.anchor.set(this._resources.marker.anchor.x, this._resources.marker.anchor.y);
+      sprite.on('click', this.handleEvent);
+      sprite.on('mouseover', this.handleEvent);
+      sprite.on('mouseout', this.handleEvent);
+      sprite.x = pixel.x;
+      sprite.y = pixel.y;
+      sprite.point = point;
+      this._container.addChild(sprite);
     }
-    this._app.stage.addChild(this._particleContainer);
+    this._app.stage.addChild(this._container);
+  };
+  CustomLayerOverlay.prototype.dealEvent = function (e, sprite) {
+    if (sprite && e && e.type === 'mouseover') {
+      sprite.texture = this._resources.hover.texture;
+      var childs = this._container.children;
+      var lastChild = childs[childs.length - 1];
+      this._container.swapChildren(sprite, lastChild);
+    } else if (sprite && e && e.type === 'mouseout') {
+      sprite.texture = this._resources.marker.texture;
+    } else if (e && e.type === 'click') {
+      console.log(sprite.point);
+    }
   };
   /**
    * app大小重置
@@ -99,15 +158,44 @@
     var app = new PIXI.Application({
       // 透明背景
       transparent: true,
+      // 分辨率比率
+      resolution: this._resolution || 1,
       width: size.width,
       height: size.height
     });
     var canvasView = app.view;
     canvasView.style.position = 'absolute';
-    canvasView.style.top = 0;
-    canvasView.style.left = 0;
+    canvasView.style.top = 0 + 'px';
+    canvasView.style.left = 0 + 'px';
     canvasView.style['user-select'] = 'none';
     return app;
+  };
+  /**
+   * 资源加载完成,设置应用
+   */
+  CustomLayerOverlay.prototype.setup = function () {
+    this._isLoaded = true;
+    // 是否在高分辨率比率屏幕上
+    var isRetina = this._resolution > 1;
+    var markerKey = !isRetina ? 'marker.png' : 'marker@2x.png';
+    var markerHoverKey = !isRetina ? 'marker_hover.png' : 'marker_hover@2x.png';
+
+    var markerAnchor = !isRetina ? { x: 0.5, y: 0.9 } : { x: 0.5, y: 0.9 };
+    var markerHoverAnchor = !isRetina ? { x: 0.5, y: 0.9 } : { x: 0.5, y: 0.9 };
+
+    // 标注纹理
+    this._resources.marker = {
+      texture: PIXI.TextureCache[markerKey],
+      anchor: markerAnchor
+    };
+    // 标注hover状态纹理
+    this._resources.hover = {
+      texture: PIXI.TextureCache[markerHoverKey],
+      anchor: markerHoverAnchor
+    };
+
+    // 渲染
+    this.render();
   };
   /**
    * 获取地图容器尺寸
@@ -122,12 +210,10 @@
   CustomLayerOverlay.prototype.isAppValid = function () {
     return !!this._app;
   };
-
   /**
-   * 处理事件
-   * @param e
+   * 是否已经加载资源
    */
-  CustomLayerOverlay.prototype.dealEvent = function (e) {
-    console.log(e);
-  }
+  CustomLayerOverlay.prototype.isLoad = function () {
+    return this._isLoaded;
+  };
 })();
