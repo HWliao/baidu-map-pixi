@@ -112,10 +112,14 @@
       var childs = this._container.children;
       var lastChild = childs[childs.length - 1];
       this._container.swapChildren(sprite, lastChild);
+
+      this.trigger(CustomLayerOverlay.EVENT_MOUSEOVER, e, sprite, this);
     } else if (sprite && e && e.type === 'mouseout') {
       sprite.texture = this._resources.marker.texture;
+
+      this.trigger(CustomLayerOverlay.EVENT_MOUSEOUT, e, sprite, this);
     } else if (e && e.type === 'click') {
-      console.log(sprite.point);
+      this.trigger(CustomLayerOverlay.EVENT_CLICK, e, sprite, this);
     }
   };
   /**
@@ -216,4 +220,65 @@
   CustomLayerOverlay.prototype.isLoad = function () {
     return this._isLoaded;
   };
+
+  /**
+   * 注册监听函数
+   * @param type 事件类型
+   * @param cb 回调
+   */
+  CustomLayerOverlay.prototype.on = function (type, cb) {
+    if (typeof type !== 'string' || typeof cb !== 'function') {
+      return;
+    }
+    var cbs = this._events[type] || [];
+    cbs.push(cb);
+    this._events[type] = cbs;
+  };
+  /**
+   * 删除监听函数
+   * @param type 事件类型
+   * @param cb 监听回调
+   */
+  CustomLayerOverlay.prototype.off = function (type, cb) {
+    if (typeof type !== 'string') {
+      return;
+    }
+    if (cb && typeof  cb !== 'function') {
+      return;
+    }
+    // 整个type删除
+    if (!cb) this._events[type] = undefined;
+    // 删除对应cb
+    var cbs = this._events[type];
+    if (cbs) {
+      for (var i = 0; cbs.length; i++) {
+        if (cbs[i] === cb) cbs[i] = undefined;
+      }
+    }
+  };
+  /**
+   * 触发某个事件
+   * @param type
+   */
+  CustomLayerOverlay.prototype.trigger = function (type) {
+    if (typeof type !== 'string') {
+      return;
+    }
+
+    var cbs = this._events[type];
+    if (cbs) {
+      for (var i = 0; i < cbs.length; i++) {
+        var cb = cbs[i];
+        if (typeof cb === 'function') {
+          var args = Array.prototype.slice.call(arguments, 1);
+          args.unshift(undefined);
+          Function.prototype.call.apply(cb, args);
+        }
+      }
+    }
+  };
+
+  CustomLayerOverlay.EVENT_CLICK = 'click';
+  CustomLayerOverlay.EVENT_MOUSEOVER = 'mouseover';
+  CustomLayerOverlay.EVENT_MOUSEOUT = 'mouseout';
 })();

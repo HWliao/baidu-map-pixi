@@ -15,7 +15,18 @@ var customLayerOverlay = new CustomLayerOverlay({
 });
 map.addOverlay(customLayerOverlay);
 
-console.log(customLayerOverlay);
+customLayerOverlay.on(CustomLayerOverlay.EVENT_CLICK, function () {
+  console.log('click');
+  console.log(arguments);
+});
+customLayerOverlay.on(CustomLayerOverlay.EVENT_MOUSEOVER, function () {
+  console.log('mouseover');
+  console.log(arguments);
+});
+customLayerOverlay.on(CustomLayerOverlay.EVENT_MOUSEOUT, function () {
+  console.log('mouseout');
+  console.log(arguments);
+});
 //var pointCollection = new BMap.PointCollection([], {
 //  size: BMAP_POINT_SIZE_SMALL,
 //  shape: BMAP_POINT_SHAPE_STAR,
