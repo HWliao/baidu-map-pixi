@@ -21,7 +21,7 @@
     // 事件列表
     this._events = {};
     // 分辨率/设备像素比率 retina屏幕上为2
-    this._resolution = 1;
+    this._resolution = window.devicePixelRatio || 1;
     // 是否已经加载资源
     this._isLoaded = false;
     // 纹理贴图
